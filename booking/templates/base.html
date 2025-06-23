@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="uk">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Booking System{% endblock %}</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- FullCalendar -->
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js'></script>
+
+    <!-- Custom styles -->
+    <style>
+        .htmx-indicator {
+            opacity: 0;
+            transition: opacity 200ms ease-in;
+        }
+
+        .htmx-request .htmx-indicator {
+            opacity: 1;
+        }
+
+        .htmx-request.htmx-indicator {
+            opacity: 1;
+        }
+    </style>
+
+    {% block extra_head %}{% endblock %}
+</head>
+
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <div class="flex-shrink-0 flex items-center">
+                        <h1 class="text-xl font-semibold text-gray-900">
+                            📅 Booking System
+                        </h1>
+                    </div>
+                    <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+                        <a href="{% url 'dashboard' %}"
+                            class="{% if request.resolver_match.url_name == 'dashboard' %}border-indigo-500 text-gray-900{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Головна
+                        </a>
+                        <a href="{% url 'calendar' %}"
+                            class="{% if request.resolver_match.url_name == 'calendar' %}border-indigo-500 text-gray-900{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Календар
+                        </a>
+                        <a href="{% url 'create_event' %}"
+                            class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Створити подію
+                        </a>
+                    </div>
+                </div>
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <button type="button"
+                            class="relative inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            <svg class="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
+                                fill="currentColor">
+                                <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                                <path fill-rule="evenodd"
+                                    d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            {{ request.user.get_full_name|default:request.user.username }}
+                        </button>
+                    </div>
+                    <div class="ml-3">
+                        <a href="{% url 'logout' %}" class="text-gray-500 hover:text-gray-700">
+                            <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Toast notifications -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+    <!-- Global scripts -->
+    <script>
+        // HTMX configuration
+        document.body.addEventListener('htmx:configRequest', (event) => {
+            event.detail.headers['X-CSRFToken'] = '{{ csrf_token }}';
+        });
+
+        // Toast notifications
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `p-4 rounded-lg shadow-lg text-white ${type === 'success' ? 'bg-green-500' :
+                type === 'error' ? 'bg-red-500' :
+                    type === 'warning' ? 'bg-yellow-500' :
+                        'bg-blue-500'
+                }`;
+            toast.innerHTML = message;
+
+            const container = document.getElementById('toast-container');
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Listen for HTMX events
+        document.body.addEventListener('htmx:afterRequest', (event) => {
+            if (event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) {
+                const message = event.detail.xhr.getResponseHeader('X-Message');
+                if (message) {
+                    showToast(message, 'success');
+                }
+            }
+        });
+    </script>
+
+    {% block extra_scripts %}{% endblock %}
+</body>
+
+</html>

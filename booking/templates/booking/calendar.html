@@ -1,0 +1,222 @@
+{% extends 'base.html' %}
+
+{% block title %}Календар - Booking System{% endblock %}
+
+{% block extra_head %}
+<style>
+    #calendar {
+        max-width: 100%;
+        height: 700px;
+    }
+
+    .fc-event {
+        cursor: pointer;
+        border: none;
+        padding: 2px 5px;
+        border-radius: 3px;
+    }
+
+    .fc-event:hover {
+        opacity: 0.8;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="px-4 py-5 sm:px-6">
+    <div class="bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <div class="md:flex md:items-center md:justify-between mb-6">
+                <div class="flex-1 min-w-0">
+                    <h2 class="text-lg font-medium text-gray-900">
+                        {% if calendar %}
+                        {{ calendar.name }}
+                        {% else %}
+                        Всі календарі
+                        {% endif %}
+                    </h2>
+                    {% if calendar and calendar.description %}
+                    <p class="mt-1 text-sm text-gray-500">{{ calendar.description }}</p>
+                    {% endif %}
+                </div>
+                <div class="mt-4 flex md:mt-0 md:ml-4 space-x-2">
+                    <button type="button" onclick="createEventModal()"
+                        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        <svg class="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
+                            fill="currentColor">
+                            <path fill-rule="evenodd"
+                                d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                                clip-rule="evenodd" />
+                        </svg>
+                        Створити подію
+                    </button>
+                    <button type="button" onclick="toggleCalendarSelector()"
+                        class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        <svg class="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                        </svg>
+                        Фільтри
+                    </button>
+                </div>
+            </div>
+
+            <!-- Calendar selector -->
+            <div id="calendar-selector" class="hidden mb-4 p-4 bg-gray-50 rounded-lg">
+                <h3 class="text-sm font-medium text-gray-900 mb-3">Показати календарі:</h3>
+                <div class="space-y-2">
+                    {% for cal in user_calendars %}
+                    <label class="inline-flex items-center">
+                        <input type="checkbox"
+                            class="calendar-checkbox rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            value="{{ cal.id }}" {% if not calendar or calendar.id==cal.id %}checked{% endif %}
+                            onchange="updateCalendarView()">
+                        <span class="ml-2 text-sm text-gray-700">
+                            <span class="inline-block w-3 h-3 rounded-full mr-2"
+                                style="background-color: {{ cal.color }}"></span>
+                            {{ cal.name }}
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- FullCalendar container -->
+            <div id="calendar"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Event modal container -->
+<div id="event-modal-container"></div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let calendar;
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const calendarEl = document.getElementById('calendar');
+
+        calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'dayGridMonth',
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+            },
+            locale: 'uk',
+            firstDay: 1, // Monday
+            height: 'auto',
+            nowIndicator: true,
+            editable: true,
+            selectable: true,
+            selectMirror: true,
+            eventSources: [
+                {
+                    url: '{% url "api_events" %}',
+                    method: 'GET',
+                    extraParams: function () {
+                        const selectedCalendars = [];
+                        document.querySelectorAll('.calendar-checkbox:checked').forEach(checkbox => {
+                            selectedCalendars.push(checkbox.value);
+                        });
+                        return {
+                            calendars: selectedCalendars
+                        };
+                    }
+                }
+            ],
+            select: function (info) {
+                createEventModal(info.start, info.end);
+                calendar.unselect();
+            },
+            eventClick: function (info) {
+                // Open event detail in modal
+                htmx.ajax('GET', info.event.url, {
+                    target: '#event-modal-container',
+                    swap: 'innerHTML'
+                });
+            },
+            eventDrop: function (info) {
+                // Update event via HTMX
+                const data = new FormData();
+                data.append('start_time', info.event.start.toISOString());
+                data.append('end_time', info.event.end.toISOString());
+
+                htmx.ajax('PUT', `/events/${info.event.id}/update-time/`, {
+                    values: data,
+                    swap: 'none'
+                }).then(() => {
+                    showToast('Час події оновлено', 'success');
+                }).catch(() => {
+                    info.revert();
+                    showToast('Помилка оновлення', 'error');
+                });
+            },
+            eventResize: function (info) {
+                // Similar to eventDrop
+                const data = new FormData();
+                data.append('start_time', info.event.start.toISOString());
+                data.append('end_time', info.event.end.toISOString());
+
+                htmx.ajax('PUT', `/events/${info.event.id}/update-time/`, {
+                    values: data,
+                    swap: 'none'
+                }).then(() => {
+                    showToast('Тривалість події оновлено', 'success');
+                }).catch(() => {
+                    info.revert();
+                    showToast('Помилка оновлення', 'error');
+                });
+            }
+        });
+
+        calendar.render();
+
+        // WebSocket connection for real-time updates
+        {% if calendar %}
+        connectWebSocket('{{ calendar.id }}');
+        {% endif %}
+    });
+
+    function createEventModal(start, end) {
+        const params = new URLSearchParams();
+        if (start) params.append('start', start.toISOString());
+        if (end) params.append('end', end.toISOString());
+        {% if calendar %} params.append('calendar_id', '{{ calendar.id }}'); {% endif %}
+
+        htmx.ajax('GET', `{% url "create_event" %}?${params}`, {
+            target: '#event-modal-container',
+            swap: 'innerHTML'
+        });
+    }
+
+    function toggleCalendarSelector() {
+        const selector = document.getElementById('calendar-selector');
+        selector.classList.toggle('hidden');
+    }
+
+    function updateCalendarView() {
+        calendar.refetchEvents();
+    }
+
+    function connectWebSocket(calendarId) {
+        const ws = new WebSocket(`ws://localhost:8001/ws/calendar/${calendarId}`);
+
+        ws.onmessage = function (event) {
+            const data = JSON.parse(event.data);
+
+            if (data.action === 'event_created' || data.action === 'event_updated') {
+                calendar.refetchEvents();
+                showToast('Календар оновлено', 'info');
+            }
+        };
+
+        ws.onerror = function (error) {
+            console.error('WebSocket error:', error);
+        };
+    }
+</script>
+{% endblock %}
